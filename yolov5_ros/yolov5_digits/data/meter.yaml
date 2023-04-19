@@ -1,0 +1,5 @@
+train: ../datasets/meter/train/images
+val: ../datasets/meter/valid/images
+
+nc: 10
+names: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']

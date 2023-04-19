@@ -1,0 +1,4 @@
+---
+# response params
+bool success
+std_msgs/String gauge_id

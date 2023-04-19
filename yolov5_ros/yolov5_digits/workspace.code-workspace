@@ -1,0 +1,22 @@
+{
+	"folders": [
+		{
+			"path": "../ros_ws/src/contact_graspnet"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"ros.distro": "noetic",
+		"ros.rosSetupScript": "/home/diana/ros_ws/devel/setup.bash",
+		"python.autoComplete.extraPaths": [
+			"/home/diana/ros_ws/devel/lib/python3/dist-packages",
+			"/opt/ros/noetic/lib/python3/dist-packages"
+		],
+		"python.analysis.extraPaths": [
+			"/home/diana/ros_ws/devel/lib/python3/dist-packages",
+			"/opt/ros/noetic/lib/python3/dist-packages"
+		]
+	}
+}

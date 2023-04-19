@@ -1,0 +1,6 @@
+path: ../datasets/my_gauge 
+train: train/images
+val: valid/images
+
+nc: 3
+names: ['center', 'gauge', 'needle']
