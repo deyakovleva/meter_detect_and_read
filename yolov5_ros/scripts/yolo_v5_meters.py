@@ -6,6 +6,7 @@ from cv2 import aruco
 import torch
 import math
 import random
+import time
 
 # gpu = torch.device('cuda')
 # print('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
@@ -112,9 +113,15 @@ class Yolo_Dect:
             #self.color_image = np.frombuffer(image.data, dtype=np.uint8).reshape(image.height, image.width, -1)
         self.color_image = ros_numpy.numpify(image)
         self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
+        # start_model = time.time()
+        # results = self.model(self.color_image)
+        results = self.model_eval(self.color_image)
 
-        results = self.model(self.color_image)
         # xmin    ymin    xmax   ymax  confidence  class(number)  name
+
+        # end_model = time.time()
+        # print('model time')
+        # print(end_model-start_model)
 
         boxs = results.pandas().xyxy[0].sort_values(by='confidence').values
         boxs_ = []
@@ -156,8 +163,7 @@ class Yolo_Dect:
                 # Draw Axis
                 aruco.drawAxis(self.color_image, matrix_camera, distortion_coeffs, rvec, tvec, 0.01) 
                 # print(rvec)
-                # print(tvec)
-            
+                # print(tvec)    
         self.dectshow(self.color_image, boxs_, image.height, image.width, self.corners, self.aruco_ids, self.rejected)
         self.im_rate = image.header.seq
 
@@ -197,6 +203,10 @@ class Yolo_Dect:
         #         cv2.imshow('result', self.color_image)
         #         cv2.waitKey(0)
         
+
+    def model_eval(self, color_image):
+        results = self.model(color_image)
+        return results
 
     def dectshow(self, org_img, boxs, height, width, corners, aruco_ids, rejected):
 
@@ -340,12 +350,12 @@ class Yolo_Dect:
         self.publish_image(org_img, height, width)
 
     def publish_image(self, imgdata, height, width):
-        #image_temp = Image()
+        # image_temp = Image()
         image_temp = ros_numpy.msgify(Image, imgdata, encoding='rgb8')
         header = Header(stamp=rospy.Time.now())
         header.frame_id = 'camera_frame'
         image_temp.header = header
-        self.image_pub.publish(image_temp)
+        self.image_pub.publish(image_temp)        
 
 
 def main():

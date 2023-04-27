@@ -8,14 +8,30 @@ import math
 # from numpy.linalg import inv
 from sklearn import linear_model, datasets
 
-src = cv.imread('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/angle_testing/bad_quallity/20.jpg')
+path_to_img = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+path_to_needle_mask = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/masks_needle_0.txt'
+path_to_digits = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/exp/labels/gauge_cropped_0_real.txt'
+
+        getImageStatus = False
+        print('start to wait')
+
+        while (not getImageStatus):
+            print('start while')
+            rospy.loginfo("Yolodigits is waiting for image.")
+            print('start loginfo')
+            rospy.sleep(2)
+            if os.path.exists(path_to_img)and os.path.exists(path_to_needle_mask) and os.path.exists(path_to_digits) :
+                print('true')
+                getImageStatus = True
+
+src = cv.imread('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_099.jpg')
 
 
 x_pic = []
 y_pic = []
 list_of_coord = []
 
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/20/masks_mano.txt', 'r') as file:
+with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/masks_mano_0.txt', 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
     list_of_coord = row
 
@@ -91,7 +107,7 @@ box_cir = np.intp(box_cir)
 cv.drawContours(src_with_circle, [box_cir], 0, (0,0,255), 3)
 
 print('Circle')
-cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/Circle_dig02.jpg', src_with_circle)
+cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/Circle_0.jpg', src_with_circle)
 # cv2_imshow(src_with_circle)
 
 # deskewing rotated box
@@ -114,7 +130,8 @@ else:
 src_deskewing = cv.warpAffine(src_deskewing, M_box, (w, h), flags=cv.INTER_CUBIC, borderMode=cv.BORDER_REPLICATE)
 
 print('Deskewing')
-# cv2_imshow(src_deskewing)
+cv.imshow('Deskw',src_deskewing)
+cv.waitKey(0)
 
 src_with_helplines = src_deskewing.copy()
 
@@ -130,7 +147,7 @@ src_scale_el = src.copy()
 # read coordinates from file
 xy_left = tuple()
 xy_right = tuple()
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/20/boxes.txt', 'r') as file:
+with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/boxes_0.txt', 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
   # 0 - gauge, 1 - needle
     if row[0] == '0':
@@ -182,7 +199,7 @@ x_pic_needle = []
 y_pic_needle = []
 list_of_coord_needle = []
 
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/20/masks_needle.txt', 'r') as file:
+with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/masks_needle_0.txt', 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
     list_of_coord_needle = row
 
@@ -304,8 +321,9 @@ src_with_sector = src_deskewing.copy()
 
 pts = np.array([ [x_1, y_1], [x_1, h], [w, h], [x_215, y_215] ])
 cv.polylines(src_with_sector, [pts], True, (200,100,200), 2)
-print('Sector')
-# cv2_imshow(src_with_sector)
+# print('Sector')
+# cv.imshow('Sector',src_with_sector)
+# cv.waitKey(0)
 
 contours_of_sector = [(x_1, y_1), (x_1, h), (w, h), (x_215, y_215)]
 contours_of_sector_ndarray = np.array(contours_of_sector, dtype=int)
@@ -334,6 +352,7 @@ else:
   print('on line')
 ################################################
 # show the measurement
+# print('gamma')
 # print(gamma)
 # max_scale = 6
 # meas = gamma*max_scale/270
@@ -347,13 +366,13 @@ else:
 digits_coordinates = []
 digits_meaning = []
 phys_quan = ''
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/angle_testing_digits/bad_qual/exp3/labels/20_real.txt', 'r') as file:
+with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/low_font_bar/labels/gauge_cropped_0_real.txt', 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
   # 0 - gauge, 1 - needle
     if (int(row[0]) != 10) and (int(row[0]) != 11):
       if int(row[0]) == 0:
           x_mid = int((int(row[1]) + int(row[3])) / 2)
-          y_mid = int((int(row[2]) + int(row[4])) / 2)+4
+          y_mid = int((int(row[2]) + int(row[4])) / 2)+10
       else:
           x_mid = int((int(row[1])+int(row[3]))/2)
           y_mid = int((int(row[2])+int(row[4]))/2)
@@ -363,7 +382,7 @@ with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov
       phys_quan_classnum = row[0]
 print(digits_coordinates)
 
-phys_quan_classnum = '10'
+# phys_quan_classnum = '11'
 if phys_quan_classnum == '10':
     phys_quan = ' bar'
 else:
@@ -395,7 +414,8 @@ for i in digits_coordinates[0]:
     digits_coordinates_deskewed.append([digits_arr_todeskpic[0], digits_arr_todeskpic[1]])
     src_digits_final[int(digits_arr_todeskpic[1]), int(digits_arr_todeskpic[0])] = [0, 255, 0]
 
-# cv2_imshow(src_digits_final)
+# cv.imshow('dig',src_digits_final)
+# cv.waitKey(0)
 # print(digits_coordinates_deskewed)
 
 digits_meaning_copy = digits_meaning
@@ -548,14 +568,15 @@ print(dict_digits)
 gamma_digits = []
 # x_1 = x_1-5
 # y_1 = y_1-5
-
-contours_of_sector = [(w, 0), (w, h), (x_1, h), (x_1, 0)]
+(h, w) = src_digits_final.shape[:2]
+contours_of_sector = [(w, 0), (w, h), (x_1, h),  (x_1, 0)]
 contours_of_sector_ndarray = np.array(contours_of_sector, dtype=int)
 contours_of_sector_ndarray_tuple = tuple()
 contours_of_sector_ndarray_tuple = (contours_of_sector_ndarray,)
 contours_of_sector_flat = np.vstack(contours_of_sector_ndarray_tuple).squeeze()
 
 for i in dict_digits.values():
+    print(i)
     check_point_digits = cv.pointPolygonTest(contours_of_sector_flat, (int(i[0]), int(i[1])), False)
     # print(check_point_digits)
     d = math.sqrt((int(i[0]) - x_1) ** 2 + (int(i[1]) - h) ** 2)
@@ -574,7 +595,8 @@ for i in dict_digits.values():
 
 pts = np.array([[w, 0], [w, h], [x_1, h], [x_1, 0]])
 cv.polylines(src_digits_final, [pts], True, (200, 100, 200), 2)
-
+cv.imshow('Sector_1', src_digits_final)
+cv.waitKey(0)
 ########### RANSAc
 dict_digits_keys_arr = []
 for i in dict_digits.keys():
@@ -582,15 +604,18 @@ for i in dict_digits.keys():
 
 gamma_digits_arr = (np.array(gamma_digits).reshape(-1, 1))
 digits_meaning_arr = (np.array(dict_digits_keys_arr).reshape(-1, 1))
-
+print(gamma_digits_arr)
+print(digits_meaning_arr)
 ransac = linear_model.RANSACRegressor()
 ransac.fit(gamma_digits_arr, digits_meaning_arr)
-
 line_y_dig_ransac = ransac.predict(gamma_digits_arr)
 
 # start_point_dig = (int(line_y_dig_ransac[0]),gamma_digits_arr[0])
 # end_point_dig = (int(line_y_dig_ransac[-1]),gamma_digits_arr[-1])
 
+# d = math.sqrt( (needle_end_x - x_1 )**2 +  (needle_end_y - h )**2)
+# e = math.sqrt( (needle_end_x - x_1 )**2 +  (needle_end_y - y_1)**2)
+# f = math.sqrt( (x_1 - x_1 )**2 +  (h - y_1)**2)
 d = math.sqrt( (needle_end_x - x_1 )**2 +  (needle_end_y - h )**2)
 e = math.sqrt( (needle_end_x - x_1 )**2 +  (needle_end_y - y_1)**2)
 f = math.sqrt( (x_1 - x_1 )**2 +  (h - y_1)**2)
@@ -598,28 +623,39 @@ f = math.sqrt( (x_1 - x_1 )**2 +  (h - y_1)**2)
 # print(e)
 # print(f)
 
-gamma_needle = math.acos( (e**2+f**2-d**2)/(2*e*f) ) *180/math.pi
+gamma_needle = math.acos( (e**2+f**2-d**2)/(2*e*f) ) *180/math.pi-2
 print(gamma_needle)
 
 print(min(gamma_digits_arr))
 print(max(gamma_digits_arr))
 print(min(line_y_dig_ransac))
 print(max(line_y_dig_ransac))
-measurement  = ((max(line_y_dig_ransac))*(gamma_needle-min(gamma_digits_arr)))/(max(gamma_digits_arr) - min(gamma_digits_arr))
+# measurement  = ((max(line_y_dig_ransac))*(gamma_needle-min(gamma_digits_arr)))/(max(gamma_digits_arr) - min(gamma_digits_arr))
+# print(measurement)
 
+
+vmin = min(line_y_dig_ransac)
+qmin = min(gamma_digits_arr)
+qmax = max(gamma_digits_arr)
+vmax = max(line_y_dig_ransac)
+# if gamma_needle<min(gamma_digits_arr)[0]:
+#     vmin = 0
+m_1 = (vmax-vmin)
+# print(m_1 )
+measurement = vmin + ((gamma_needle-qmin)/(qmax-qmin))*(vmax-vmin)
 
 # if measurement<0:
 #   measurement =0.0
 
 print('Measurement')
 if phys_quan is not None:
-    print(str(np.round(measurement,5))+phys_quan)
+    print(str(np.round(measurement[0],5))+phys_quan)
 else:
     print(measurement)
-cv.putText(src_with_helplines, str(np.round(measurement[0],2))+phys_quan, (needle_end_x,needle_end_y-20), cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1, cv.LINE_AA)
+cv.putText(src_with_helplines, str(np.round(measurement[0],2))+phys_quan, (w-130,20), cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv.LINE_AA)
 
 src_with_helplines[y_1, x_1] = (0,0,255)
 cv.imshow('Result', src_with_helplines)
-cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/gauge_dig02.jpg', src_with_helplines)
+cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/gauge_0.jpg', src_with_helplines)
 
 cv.waitKey(0)

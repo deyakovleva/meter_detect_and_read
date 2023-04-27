@@ -47,6 +47,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
                            increment_path, non_max_suppression, print_args, scale_boxes, strip_optimizer, xyxy2xywh)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
+import rospy
 
 end_libs = time.time()
 print('Libs downloading')
@@ -94,6 +95,9 @@ def run(
     save_dir = increment_path(Path(project) / name, exist_ok=exist_ok)  # increment run
     (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
+
+
+
     # Load model
     device = select_device(device)
     start_net = time.time()
@@ -101,6 +105,16 @@ def run(
     end_net = time.time()
     print('Model is loaded')
     print(end_net - start_net)
+
+    path = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+    getImageStatus = False
+
+    while (not getImageStatus):
+        rospy.loginfo("Yolodigits is waiting for image.")
+        rospy.sleep(2)
+        if os.path.exists(path):
+            getImageStatus = True
+
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
 
@@ -261,10 +275,10 @@ def run(
 def parse_opt():
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / '43.pt', help='model path or triton URL')
-    parser.add_argument('--source', type=str, default=ROOT / '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/angle_testing/bad_quallity/0.jpg', help='file/dir/URL/glob/screen/0(webcam)')
+    parser.add_argument('--source', type=str, default=ROOT / '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg', help='file/dir/URL/glob/screen/0(webcam)')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
-    parser.add_argument('--conf-thres', type=float, default=0.4, help='confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.73, help='confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='NMS IoU threshold')
     parser.add_argument('--max-det', type=int, default=1000, help='maximum detections per image')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
@@ -279,7 +293,7 @@ def parse_opt():
     parser.add_argument('--visualize', action='store_true', help='visualize features')
     parser.add_argument('--update', action='store_true', help='update all models')
     parser.add_argument('--project', default=ROOT / 'runs/detect', help='save results to project/name')
-    parser.add_argument('--name', default='angle_testing_digits/bad_qual/exp', help='save results to project/name')
+    parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--line-thickness', default=3, type=int, help='bounding box thickness (pixels)')
     parser.add_argument('--hide-labels', default=False, action='store_true', help='hide labels')

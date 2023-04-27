@@ -30,6 +30,7 @@ from collections import OrderedDict
 
 import matplotlib.pyplot as plt
 import cv2
+import rospy
 
 end_libs = time.time()
 print('Libs downloading')
@@ -100,7 +101,7 @@ def parse_args(argv=None):
                         help='Outputs stuff for scripts/compute_mask.py.')
     parser.add_argument('--no_crop', default=False, dest='crop', action='store_false',
                         help='Do not crop output masks with the predicted bounding box.')
-    parser.add_argument('--image', default='/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/angle_testing/bad_quallity/0.jpg', type=str,
+    parser.add_argument('--image', default='/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg', type=str,
                         help='A path to an image to use for display.')
     parser.add_argument('--images', default=None, type=str,
                         help='An input folder of images and output folder to save detected images. Should be in the format input->output.')
@@ -108,7 +109,7 @@ def parse_args(argv=None):
                         help='A path to a video to evaluate on. Passing in a number will use that index webcam.')
     parser.add_argument('--video_multiframe', default=1, type=int,
                         help='The number of frames to evaluate in parallel to make videos play at higher fps.')
-    parser.add_argument('--score_threshold', default=0.45, type=float,
+    parser.add_argument('--score_threshold', default=0.5, type=float,
                         help='Detections with a score under this threshold will not be considered. This currently only works in display mode.')
     parser.add_argument('--dataset', default=None, type=str,
                         help='If specified, override the dataset specified in the config with this one (example: coco2017_dataset).')
@@ -164,7 +165,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
             
         classes, scores, boxes = [x[idx].cpu().numpy() for x in t[:3]]
 
-        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/0/boxes.txt', 'w+') as file:
+        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/boxes_l.txt', 'w+') as file:
             for j in range(len(classes)):
                 file.write(str(j) + ' ' + ' '.join(map(str, boxes[j])) + '\n')
   
@@ -238,7 +239,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         #     for j in range(len(y_1chanel)):
         #         file.write(str(y_1chanel[j]) + ' ' )
 
-        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/0/masks_mano.txt', 'w') as file:
+        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/masks_mano_l.txt', 'w') as file:
             for j in range(len(x_1chanel)):
                 file.write(str(x_1chanel[j]) + ' ' )
                 file.write(str(y_1chanel[j]) + ' ' )
@@ -253,10 +254,10 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         y_2 = indices_2[1][:]
 
         x_2chanel = x_2[::3]
-        x_red_2 = x_2chanel[::1]
+        x_red_2 = x_2chanel[::100]
 
         y_2chanel = y_2[::3]
-        y_red_2 = y_2chanel[::1]
+        y_red_2 = y_2chanel[::100]
 
         # with open(f'/home/diana/yolact_ws/masks_x_reduced_needle.txt', 'w') as file:
         #     # print('write to file')
@@ -267,7 +268,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         #     for j in range(len(y_red_2)):
         #         file.write(str(y_red_2[j]) + ' ' )
         
-        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/0/masks_needle.txt', 'w') as file:
+        with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/masks_needle_l.txt', 'w') as file:
             for j in range(len(y_red_2)):
                 file.write(str(x_red_2[j]) + ' ' )
                 file.write(str(y_red_2[j]) + ' ' )
@@ -725,9 +726,10 @@ def evalimage(net:Yolact, path:str, save_path:str=None):
         img_numpy = img_numpy[:, :, (2, 1, 0)]
 
     if save_path is None:
-        plt.imshow(img_numpy)
-        plt.title(path)
-        plt.show()
+        # plt.imshow(img_numpy)
+        # plt.title(path)
+        # plt.show()
+        print('image is not saved')
     else:
         cv2.imwrite(save_path, img_numpy)
 
@@ -1245,16 +1247,26 @@ if __name__ == '__main__':
         start_net = time.time()
         net.load_weights(args.trained_model)
         end_net = time.time()
+
         net.eval()
-        end_eval = time.time()
         print(' Done.')
         print(end_net-start_net)
-        print('Evaluating time')
-        print(end_eval - end_net)
 
         if args.cuda:
             net = net.cuda()
+        path = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+        getImageStatus = False
 
+        while (not getImageStatus):
+            rospy.loginfo("Yolodigits is waiting for image.")
+            print('Yolact is waiting for image.')
+            rospy.sleep(2)
+            if os.path.exists(path):
+                print('Got image')
+                getImageStatus = True
+        start_eval = time.time()
         evaluate(net, dataset)
-
+        end_eval = time.time()
+        print('Evaluating time')
+        print(end_eval - start_eval)
 
