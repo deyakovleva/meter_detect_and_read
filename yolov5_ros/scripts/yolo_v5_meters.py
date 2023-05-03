@@ -15,6 +15,7 @@ from sensor_msgs.msg import Image
 from yolov5_ros_msgs.msg import BoundingBox, BoundingBoxes
 from yolov5_ros_msgs.srv import counter_response_crop, counter_response_cropResponse, gauge_response_crop, gauge_response_cropResponse, ssdisplay_response_crop, ssdisplay_response_cropResponse
 import os 
+# from yolov5.models.common import DetectMultiBackend
 
 path = '/ros_ws/ws-ros1/src/meter_detect_and_read/'
 class Yolo_Dect:
@@ -49,7 +50,9 @@ class Yolo_Dect:
         # load local repository(YoloV5:v6.0)
         start_load_model = time.time()
         self.model = torch.hub.load(yolov5_path, 'custom', path=weight_path, source='local', force_reload=True)
-        self.model_digits = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/43.pt', source='local', force_reload=True)
+        self.model_digits = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/43.pt', source='local', force_reload=True)
+        self.model_seg = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/7_seg.pt', source='local', force_reload=True)
+        # self.model_seg = DetectMultiBackend('/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/7_seg.pt')
         end_load_model = time.time()
         print('Models are loaded')
         print(end_load_model-start_load_model)
@@ -112,21 +115,18 @@ class Yolo_Dect:
         # if abs((self.im_rate - image.header.seq))>=1:
 
         self.getImageStatus = True
-            #self.color_image = np.frombuffer(image.data, dtype=np.uint8).reshape(image.height, image.width, -1)
-        # self.color_image = ros_numpy.numpify(image)
-        # self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
-        # start_model = time.time()
-        # results = self.model(self.color_image)
-        # results = self.model_eval(self.color_image)
         self.msg_ = image
 
-        # xmin    ymin    xmax   ymax  confidence  class(number)  name
+        
 
-        # end_model = time.time()
-        # print('model time')
-        # print(end_model-start_model)
+    def model_eval(self):
+        self.color_image = ros_numpy.numpify(self.msg_)
+        self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
+        results = self.model(self.color_image)
+        # print(results.pandas().xyxy[0])
+        boxs = results.pandas().xyxy[0].sort_values(by='confidence').values
 
-        # boxs = results.pandas().xyxy[0].sort_values(by='confidence').values
+        ############ for aruco ############
         # boxs_ = []
         
         # # create ids list (aruco here)
@@ -137,18 +137,6 @@ class Yolo_Dect:
         #     boxs_ = np.append(boxs_,boxes_)
 
         # boxs_ = np.reshape(boxs_, (-1, 8))
-
-           
-        # self.dectshow(self.color_image, boxs_, image.height, image.width)
-        # self.im_rate = image.header.seq
-        
-
-    def model_eval(self):
-        self.color_image = ros_numpy.numpify(self.msg_)
-        self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
-        results = self.model(self.color_image)
-        # print(results.pandas().xyxy[0])
-        boxs = results.pandas().xyxy[0].sort_values(by='confidence').values
            
         self.dectshow(self.color_image, boxs, self.msg_.height, self.msg_.width)
         self.im_rate = self.msg_.header.seq
@@ -160,12 +148,28 @@ class Yolo_Dect:
         cropped_msg = self.color_image[self.bboxes[1]:self.bboxes[3],self.bboxes[0]:self.bboxes[2]]
         # cv2.imwrite(os.path.join(path, 'cropped_msg_0.jpg'), cropped_msg)
         results_dig = self.model_digits(cropped_msg)
-        print(results_dig.pandas().xyxy[0])
         boxs_dig = results_dig.pandas().xyxy[0].sort_values(by='confidence').values
            
         # self.dectshow(self.color_image, boxs_dig, self.msg_.height, self.msg_.width)
         # self.im_rate = self.msg_.header.seq
         return results_dig
+
+
+    def model_seg_eval(self):
+        self.color_image = ros_numpy.numpify(self.msg_)
+        self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
+        cropped_msg = self.color_image[self.bboxes[1]:self.bboxes[3],self.bboxes[0]:self.bboxes[2]]
+        # cv2.imwrite(os.path.join(path, 'cropped_msg_0.jpg'), cropped_msg)
+        y = np.expand_dims(cropped_msg, axis=0) 
+        results_seg = self.model_seg(y)
+        print('results_seg')
+        print(results_seg)
+        # boxs_seg = results_seg.pandas().xyxy[0].sort_values(by='confidence').values
+           
+        # self.dectshow(self.color_image, boxs_dig, self.msg_.height, self.msg_.width)
+        # self.im_rate = self.msg_.header.seq
+        return results_seg
+
 
     def dectshow(self, org_img, boxs, height, width):
 
@@ -290,6 +294,7 @@ def main():
     while not rospy.is_shutdown():
         yolo_dect.model_eval()
         yolo_dect.model_digits_eval()
+        yolo_dect.model_seg_eval()
         rate.sleep()
 
 
