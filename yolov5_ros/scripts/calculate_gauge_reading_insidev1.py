@@ -1,37 +1,56 @@
 from __future__ import print_function
+import time
+start_lib = time.time()
 import cv2 as cv
 import numpy as np
-# import argparse
-# import random as rng
 import math
-# import matplotlib.pyplot as plt
-# from numpy.linalg import inv
 from sklearn import linear_model, datasets
+import rospy
+end_lib = time.time()
+import sys
+from pathlib import Path
+import os
+print('libs are loaded')
+print(end_lib-start_lib)
 
-path_to_img = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
-path_to_needle_mask = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/masks_needle_0.txt'
-path_to_digits = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/exp/labels/gauge_cropped_0_real.txt'
+FILE = Path(__file__).resolve()
+ROOT = FILE.parents[0]  # YOLOv5 root directory
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))  # add ROOT to PATH
+ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
-        getImageStatus = False
-        print('start to wait')
+# print('root')
+# print(FILE.parents[0]) # /ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/scripts
+# print(FILE.parents[1]) # /ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros
 
-        while (not getImageStatus):
-            print('start while')
-            rospy.loginfo("Yolodigits is waiting for image.")
-            print('start loginfo')
-            rospy.sleep(2)
-            if os.path.exists(path_to_img)and os.path.exists(path_to_needle_mask) and os.path.exists(path_to_digits) :
-                print('true')
-                getImageStatus = True
 
-src = cv.imread('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_099.jpg')
+path_to_img = os.path.join(FILE.parents[1], 'media/gauge_cropped_0.jpg') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+path_to_mask_mano = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt'
+path_to_mask_needle = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt'
+path_to_bbox = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_bbox.txt')
+path_to_digits = os.path.join(FILE.parents[1], 'yolov5_digits/runs/detect/exp9/labels/gauge_cropped_0_real.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/exp9/labels/gauge_cropped_0_real.txt'
+
+getImageStatus = False
+print('start to wait')
+
+while (not getImageStatus):
+  print('start while')
+  rospy.loginfo("Calculating is waiting for image.")
+  print('start loginfo')
+  rospy.sleep(2)
+  if os.path.exists(path_to_img)and os.path.exists(path_to_mask_needle) and os.path.exists(path_to_digits) :
+    print('true')
+    getImageStatus = True
+
+start_all = time.time()
+src = cv.imread(path_to_img)
 
 
 x_pic = []
 y_pic = []
 list_of_coord = []
 
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/masks_mano_0.txt', 'r') as file:
+with open(path_to_mask_mano, 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
     list_of_coord = row
 
@@ -107,7 +126,7 @@ box_cir = np.intp(box_cir)
 cv.drawContours(src_with_circle, [box_cir], 0, (0,0,255), 3)
 
 print('Circle')
-cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/Circle_0.jpg', src_with_circle)
+cv.imwrite(os.path.join(FILE.parents[1], 'measurement/Circle_0.jpg'), src_with_circle)
 # cv2_imshow(src_with_circle)
 
 # deskewing rotated box
@@ -130,8 +149,8 @@ else:
 src_deskewing = cv.warpAffine(src_deskewing, M_box, (w, h), flags=cv.INTER_CUBIC, borderMode=cv.BORDER_REPLICATE)
 
 print('Deskewing')
-cv.imshow('Deskw',src_deskewing)
-cv.waitKey(0)
+# cv.imshow('Deskw',src_deskewing)
+# cv.waitKey(0)
 
 src_with_helplines = src_deskewing.copy()
 
@@ -147,7 +166,7 @@ src_scale_el = src.copy()
 # read coordinates from file
 xy_left = tuple()
 xy_right = tuple()
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/boxes_0.txt', 'r') as file:
+with open(path_to_bbox, 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
   # 0 - gauge, 1 - needle
     if row[0] == '0':
@@ -199,7 +218,7 @@ x_pic_needle = []
 y_pic_needle = []
 list_of_coord_needle = []
 
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolact/res/bar_lbs/masks_needle_0.txt', 'r') as file:
+with open(path_to_mask_needle, 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
     list_of_coord_needle = row
 
@@ -295,8 +314,8 @@ else:
 # from center to end point of needle
 cv.line(src_with_helplines, (needle_start_x, needle_start_y), (needle_end_x,needle_end_y), (255,255,0), 1, cv.LINE_AA)
 # cv2_imshow(src_with_helplines)
-cv.imshow('Result', src_with_helplines)
-cv.waitKey(0)
+# cv.imshow('Result', src_with_helplines)
+# cv.waitKey(0)
 
 # l_crop2full = (l_array[1][0]+int(xy_left_needle_new_[0]), l_array[1][1] + int(xy_left_needle_new_[1]))
 
@@ -366,7 +385,7 @@ else:
 digits_coordinates = []
 digits_meaning = []
 phys_quan = ''
-with open(f'/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/low_font_bar/labels/gauge_cropped_0_real.txt', 'r') as file:
+with open(path_to_digits, 'r') as file:
   for row in [x.split(' ') for x in file.read().strip().splitlines()]:
   # 0 - gauge, 1 - needle
     if (int(row[0]) != 10) and (int(row[0]) != 11):
@@ -595,8 +614,8 @@ for i in dict_digits.values():
 
 pts = np.array([[w, 0], [w, h], [x_1, h], [x_1, 0]])
 cv.polylines(src_digits_final, [pts], True, (200, 100, 200), 2)
-cv.imshow('Sector_1', src_digits_final)
-cv.waitKey(0)
+# cv.imshow('Sector_1', src_digits_final)
+# cv.waitKey(0)
 ########### RANSAc
 dict_digits_keys_arr = []
 for i in dict_digits.keys():
@@ -656,6 +675,9 @@ cv.putText(src_with_helplines, str(np.round(measurement[0],2))+phys_quan, (w-130
 
 src_with_helplines[y_1, x_1] = (0,0,255)
 cv.imshow('Result', src_with_helplines)
-cv.imwrite('/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/measurement/gauge_0.jpg', src_with_helplines)
+cv.imwrite(os.path.join(FILE.parents[1], 'measurement/gauge_0.jpg'), src_with_helplines)
+end_all = time.time()
+print('Elapsed time without libs')
+print(end_all-start_all)
 
-cv.waitKey(0)
+# cv.waitKey(0)

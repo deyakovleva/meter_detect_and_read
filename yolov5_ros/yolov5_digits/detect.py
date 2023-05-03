@@ -106,7 +106,7 @@ def run(
     print('Model is loaded')
     print(end_net - start_net)
 
-    path = '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+    path = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
     getImageStatus = False
 
     while (not getImageStatus):
@@ -273,9 +273,11 @@ def run(
 
 
 def parse_opt():
+
+    path_to_media = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default=ROOT / '43.pt', help='model path or triton URL')
-    parser.add_argument('--source', type=str, default=ROOT / '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg', help='file/dir/URL/glob/screen/0(webcam)')
+    parser.add_argument('--source', type=str, default=ROOT / path_to_media, help='file/dir/URL/glob/screen/0(webcam)')
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='(optional) dataset.yaml path')
     parser.add_argument('--imgsz', '--img', '--img-size', nargs='+', type=int, default=[640], help='inference size h,w')
     parser.add_argument('--conf-thres', type=float, default=0.73, help='confidence threshold')
@@ -308,7 +310,7 @@ def parse_opt():
 
 
 def main(opt):
-    check_requirements(exclude=('tensorboard', 'thop'))
+    # check_requirements(exclude=('tensorboard', 'thop'))
     run(**vars(opt))
 
 

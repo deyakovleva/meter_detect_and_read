@@ -24,7 +24,8 @@ Usage - formats:
                                           yolov5s-seg_edgetpu.tflite     # TensorFlow Edge TPU
                                           yolov5s-seg_paddle_model       # PaddlePaddle
 """
-
+import time
+start_libs = time.time()
 import argparse
 import os
 import platform
@@ -47,15 +48,19 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.segment.general import masks2segments, process_mask
 from utils.torch_utils import select_device, smart_inference_mode
+import rospy
 
+end_libs = time.time()
+print('Libs downloading')
+print(end_libs-start_libs)
 
 @smart_inference_mode()
 def run(
-    weights=ROOT / 'yolov5s-seg.pt',  # model.pt path(s)
+    weights=ROOT / '7_seg.pt',  # model.pt path(s)
     source=ROOT / 'data/images',  # file/dir/URL/glob/screen/0(webcam)
     data=ROOT / 'data/coco128.yaml',  # dataset.yaml path
     imgsz=(640, 640),  # inference size (height, width)
-    conf_thres=0.25,  # confidence threshold
+    conf_thres=0.6,  # confidence threshold
     iou_thres=0.45,  # NMS IOU threshold
     max_det=1000,  # maximum detections per image
     device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
@@ -95,9 +100,14 @@ def run(
 
     # Load model
     device = select_device(device)
+    start_net = time.time()
     model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
+    end_net = time.time()
+    print('Model is loaded')
+    print(end_net - start_net)
     stride, names, pt = model.stride, model.names, model.pt
     imgsz = check_img_size(imgsz, s=stride)  # check image size
+
 
     # Dataloader
     bs = 1  # batch_size
@@ -125,7 +135,20 @@ def run(
         # Inference
         with dt[1]:
             visualize = increment_path(save_dir / Path(path).stem, mkdir=True) if visualize else False
+            
+            path = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
+            getImageStatus = False
+
+            while (not getImageStatus):
+                rospy.loginfo("Yoloseg is waiting for image.")
+                rospy.sleep(2)
+                if os.path.exists(path):
+                    getImageStatus = True
+            start_eval = time.time()
             pred, proto = model(im, augment=augment, visualize=visualize)[:2]
+            end_eval = time.time()
+            print('Evaluating time')
+            print(end_eval - start_eval)
 
         # NMS
         with dt[2]:
@@ -268,7 +291,7 @@ def parse_opt():
 
 
 def main(opt):
-    check_requirements(exclude=('tensorboard', 'thop'))
+    # check_requirements(exclude=('tensorboard', 'thop'))
     run(**vars(opt))
 
 
