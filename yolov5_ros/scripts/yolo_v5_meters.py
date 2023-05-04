@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+import sys
+# sys.path.insert(0, '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/yolov5')
+# print(sys.path)
 import cv2
 from cv2 import aruco
 import torch
@@ -15,7 +17,14 @@ from sensor_msgs.msg import Image
 from yolov5_ros_msgs.msg import BoundingBox, BoundingBoxes
 from yolov5_ros_msgs.srv import counter_response_crop, counter_response_cropResponse, gauge_response_crop, gauge_response_cropResponse, ssdisplay_response_crop, ssdisplay_response_cropResponse
 import os 
-# from yolov5.models.common import DetectMultiBackend
+from yolov5_ros.yolov5.models.common import DetectMultiBackend
+from yolov5_ros.yolov5.utils.torch_utils import select_device
+from yolov5_ros.yolov5.utils.dataloaders import LoadImages
+from yolov5_ros.yolov5.utils.general import (non_max_suppression, check_img_size)
+from pathlib import Path
+# (LOGGER, Profile, check_file, check_img_size, check_imshow, check_requirements, colorstr, cv2,
+#                            increment_path, non_max_suppression, print_args, scale_boxes, scale_segments,
+#                            strip_optimizer, xyxy2xywh)
 
 path = '/ros_ws/ws-ros1/src/meter_detect_and_read/'
 class Yolo_Dect:
@@ -28,6 +37,7 @@ class Yolo_Dect:
     det_gauge_id = String()
     det_ssdisplay_id = String()
     boundingBoxes = BoundingBoxes()
+    seen = 0
 
     def __init__(self):
 
@@ -46,24 +56,35 @@ class Yolo_Dect:
 
         # torch.cuda.set_per_process_memory_fraction(0.5, 0)
         
-        # self.device = torch.device("cpu")
+        device = torch.device("cuda")
         # load local repository(YoloV5:v6.0)
         start_load_model = time.time()
+        # device = select_device('0')
+        # print('device')
+        # print(device)
+
+        weights_seg = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/7_seg.pt'
+        data = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/data/coco128.yaml' 
+        self.model_seg = DetectMultiBackend(weights_seg, device = device, dnn=False, data=data, fp16=False )
         self.model = torch.hub.load(yolov5_path, 'custom', path=weight_path, source='local', force_reload=True)
+        self.model.to(device)
         self.model_digits = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/43.pt', source='local', force_reload=True)
-        self.model_seg = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/7_seg.pt', source='local', force_reload=True)
-        # self.model_seg = DetectMultiBackend('/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/7_seg.pt')
+        self.model_digits.to(device)
+        # self.model_seg = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/7_seg.pt', source='local', force_reload=True)
+        
+        
         end_load_model = time.time()
         print('Models are loaded')
         print(end_load_model-start_load_model)
         # self.model.cpu()
 
         # which device will be used
-        if (rospy.get_param('/use_cpu', 'false')):
-            self.model.cpu()
-        else:
-            self.model.cuda()
-            self.model_digits.cuda()
+        # if (rospy.get_param('/use_cpu', 'false')):
+        #     self.model.cpu()
+        # else:
+        #     self.model.cuda()
+        #     self.model_digits.cuda()
+        #     # self.model_seg.cuda()
 
         
 
@@ -159,16 +180,94 @@ class Yolo_Dect:
         self.color_image = ros_numpy.numpify(self.msg_)
         self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
         cropped_msg = self.color_image[self.bboxes[1]:self.bboxes[3],self.bboxes[0]:self.bboxes[2]]
-        # cv2.imwrite(os.path.join(path, 'cropped_msg_0.jpg'), cropped_msg)
-        y = np.expand_dims(cropped_msg, axis=0) 
-        results_seg = self.model_seg(y)
-        print('results_seg')
-        print(results_seg)
+        cv2.imwrite(os.path.join(path, 'cropped_msg_0.jpg'), self.color_image )
+        stride, names, pt = self.model_seg.stride, self.model_seg.names, self.model_seg.pt
+        vid_stride = 1
+        imgsz=(640, 640)
+        imgsz = check_img_size(imgsz, s=stride)  # check image size
+        bs = 1
+        source = os.path.join(path, 'cropped_msg_0.jpg')
+        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=pt, vid_stride=vid_stride)
+        bs = len(dataset)
+        vid_path, vid_writer = [None] * bs, [None] * bs
+
+        for path_, im, im0s, vid_cap, s in dataset:
+            im = torch.from_numpy(im).to(self.model_seg.device)
+            im = im.half() if self.model_seg.fp16 else im.float()  # uint8 to fp16/32
+            im /= 255  # 0 - 255 to 0.0 - 1.0
+            if len(im.shape) == 3:
+                im = im[None]  # expand for batch dim
+                pred, proto = self.model_seg(im)[:2]
+
+
+
+        y = np.expand_dims(self.color_image, axis=0) 
+        b = np.transpose(y, (0, 3, 1, 2))
+        t = torch.from_numpy(b).cuda().float()
+        # pred, proto = self.model_seg(y)[:2]
+
+        for i, det in enumerate(pred):  # per image
+            self.seen += 1
+            agnostic_nms=False
+            max_det=1000
+            pred = non_max_suppression(pred, self.model.conf, 0.45, 2, agnostic_nms, max_det, nm=32)
+            p, im0, frame = path_, im0s.copy(), getattr(dataset, 'frame', 0)
+
+            p = Path(p)  # to Path
+            print('Path')
+            print(p)
+            # save_path = str(save_dir / p.name)  # im.jpg
+            # txt_path = str(save_dir / 'labels' / p.stem) + ('' if dataset.mode == 'image' else f'_{frame}')  # im.txt
+            # s += '%gx%g ' % im.shape[2:]  # print string
+            # imc = im0.copy() if save_crop else im0  # for save_crop
+            # annotator = Annotator(im0, line_width=line_thickness, example=str(names))
+            # if len(det):
+            #     masks = process_mask(proto[i], det[:, 6:], det[:, :4], im.shape[2:], upsample=True)  # HWC
+            #     det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()  # rescale boxes to im0 size
+
+            #     # Segments
+            #     if save_txt:
+            #         segments = reversed(masks2segments(masks))
+            #         segments = [scale_segments(im.shape[2:], x, im0.shape).round() for x in segments]
+
+            #     # Print results
+            #     for c in det[:, 5].unique():
+            #         n = (det[:, 5] == c).sum()  # detections per class
+            #         s += f"{n} {names[int(c)]}{'s' * (n > 1)}, "  # add to string
+
+            #     # Mask plotting
+            #     annotator.masks(masks,
+            #                     colors=[colors(x, True) for x in det[:, 5]],
+            #                     im_gpu=None if retina_masks else im[i])
+
+            #     # Write results
+            #     for j, (*xyxy, conf, cls) in enumerate(reversed(det[:, :6])):
+            #         if save_txt:  # Write to file
+            #             segj = segments[j].reshape(-1)  # (n,2) to (n*2)
+            #             line = (cls, *segj, conf) if save_conf else (cls, *segj)  # label format
+            #             with open(f'{txt_path}.txt', 'a') as f:
+            #                 f.write(('%g ' * len(line)).rstrip() % line + '\n')
+
+            #             line_bbox = (cls, *xyxy, conf) if save_conf else (cls, *xyxy)  # label format
+            #             with open(txt_path + '_bbox.txt', 'a') as f:
+            #                 f.write(('%g ' * len(line_bbox)).rstrip() % line_bbox + '\n')
+
+            #         if save_img or save_crop or view_img:  # Add bbox to image
+            #             c = int(cls)  # integer class
+            #             label = None if hide_labels else (names[c] if hide_conf else f'{names[c]} {conf:.2f}')
+            #             annotator.box_label(xyxy, label, color=colors(c, True))
+            #             # annotator.draw.polygon(segments[j], outline=colors(c, True), width=3)
+            #         if save_crop:
+            #             save_one_box(xyxy, imc, file=save_dir / 'crops' / names[c] / f'{p.stem}.jpg', BGR=True)
+        # print('pred')
+        # print(pred)
+        # print('proto')
+        # print(proto)
         # boxs_seg = results_seg.pandas().xyxy[0].sort_values(by='confidence').values
            
         # self.dectshow(self.color_image, boxs_dig, self.msg_.height, self.msg_.width)
         # self.im_rate = self.msg_.header.seq
-        return results_seg
+        return pred
 
 
     def dectshow(self, org_img, boxs, height, width):
