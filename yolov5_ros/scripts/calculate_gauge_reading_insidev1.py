@@ -25,22 +25,22 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 
 
 path_to_img = os.path.join(FILE.parents[1], 'media/gauge_cropped_0.jpg') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/media/gauge_cropped_0.jpg'
-path_to_mask_mano = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt'
-path_to_mask_needle = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt'
-path_to_bbox = os.path.join(FILE.parents[1], 'yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_bbox.txt')
-path_to_digits = os.path.join(FILE.parents[1], 'yolov5_digits/runs/detect/exp9/labels/gauge_cropped_0_real.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/exp9/labels/gauge_cropped_0_real.txt'
+path_to_mask_mano = os.path.join(FILE.parents[1], 'yolov5/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_mano.txt'
+path_to_mask_needle = os.path.join(FILE.parents[1], 'yolov5/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/predict-seg/exp17/labels/gauge_cropped_0_needle.txt'
+path_to_bbox = os.path.join(FILE.parents[1], 'yolov5/runs/predict-seg/exp17/labels/gauge_cropped_0_bbox.txt')
+path_to_digits = os.path.join(FILE.parents[1], 'yolov5/runs/detect/exp9/labels/gauge_cropped_0_real.txt') #'/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5_digits/runs/detect/exp9/labels/gauge_cropped_0_real.txt'
 
 getImageStatus = False
 print('start to wait')
 
-while (not getImageStatus):
-  print('start while')
-  rospy.loginfo("Calculating is waiting for image.")
-  print('start loginfo')
-  rospy.sleep(2)
-  if os.path.exists(path_to_img)and os.path.exists(path_to_mask_needle) and os.path.exists(path_to_digits) :
-    print('true')
-    getImageStatus = True
+# while (not getImageStatus):
+#   print('start while')
+#   rospy.loginfo("Calculating is waiting for image.")
+#   print('start loginfo')
+#   rospy.sleep(2)
+#   if os.path.exists(path_to_img)and os.path.exists(path_to_mask_needle) and os.path.exists(path_to_digits) :
+#     print('true')
+#     getImageStatus = True
 
 start_all = time.time()
 src = cv.imread(path_to_img)
