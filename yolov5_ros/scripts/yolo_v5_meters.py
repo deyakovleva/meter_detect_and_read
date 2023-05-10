@@ -721,148 +721,151 @@ class Yolo_Dect:
     def gauge_calculate(self, boxes_dig, masks):
 
         mask_dict = {}
-        mask_dict[int(masks[1])] = masks[0]
-        mask_dict[int(masks[3])] = masks[2]
-        # if '1' in mask_dict:
-        #     print('Needle is found. Start to evaluate measurement')
-        # else:
-        #     return
 
-        contours_flat = self.masks_reading(mask_dict[0], '0')
-        ellipse = cv2.fitEllipse(contours_flat)
-        (x_el, y_el), (MA, ma), angle = cv2.fitEllipse(contours_flat)
+        if len(masks)>2:
+            mask_dict[int(masks[1])] = masks[0]
+            mask_dict[int(masks[3])] = masks[2]
+            # if '1' in mask_dict:
+            #     print('Needle is found. Start to evaluate measurement')
+            # else:
+            #     return
 
-        src_with_max_contour = self.cropped_msg.copy()
-        cv2.ellipse(src_with_max_contour, ellipse, (0, 255, 0), 3)
-        box = cv2.boxPoints(ellipse)
-        box = np.intp(box)
-        cv2.drawContours(src_with_max_contour, [box], 0, (0,0,255), 3)
-        # cv2.imshow('Ellipse',src_with_max_contour)
-        # cv2.waitKey(0)
+            contours_flat = self.masks_reading(mask_dict[0], '0')
+            ellipse = cv2.fitEllipse(contours_flat)
+            (x_el, y_el), (MA, ma), angle = cv2.fitEllipse(contours_flat)
 
-        # convert ellipse to circle
-        src_el2c = self.cropped_msg.copy()
+            src_with_max_contour = self.cropped_msg.copy()
+            cv2.ellipse(src_with_max_contour, ellipse, (0, 255, 0), 3)
+            box = cv2.boxPoints(ellipse)
+            box = np.intp(box)
+            cv2.drawContours(src_with_max_contour, [box], 0, (0,0,255), 3)
+            # cv2.imshow('Ellipse',src_with_max_contour)
+            # cv2.waitKey(0)
 
-        M_el2c = self.get_rot_m(src_el2c.shape[0], src_el2c.shape[1], MA/ma, angle)        
+            # convert ellipse to circle
+            src_el2c = self.cropped_msg.copy()
 
-        ellipce2circle = cv2.warpAffine(src_el2c, M_el2c, (src_el2c.shape[0],src_el2c.shape[1]), borderMode=cv2.BORDER_REPLICATE)
-        vect_el = np.array([x_el, y_el, 1])
-        new_el_coord = M_el2c.dot(vect_el.T)
+            M_el2c = self.get_rot_m(src_el2c.shape[0], src_el2c.shape[1], MA/ma, angle)        
 
-        # draw circle
-        src_with_circle = ellipce2circle.copy()
-        cv2.ellipse(src_with_circle, ((new_el_coord[0], new_el_coord[1]), (MA,MA), 180-angle), (0, 255, 0), 3)
-        circle = ((new_el_coord[0], new_el_coord[1]), (MA,MA), 180-angle)
-        box_circle = cv2.boxPoints(circle)
-        box_circle = np.intp(box_circle)
-        cv2.drawContours(src_with_circle, [box_circle], 0, (0,0,255), 3)
+            ellipce2circle = cv2.warpAffine(src_el2c, M_el2c, (src_el2c.shape[0],src_el2c.shape[1]), borderMode=cv2.BORDER_REPLICATE)
+            vect_el = np.array([x_el, y_el, 1])
+            new_el_coord = M_el2c.dot(vect_el.T)
 
-        # cv2.imshow('ellipce2circle',src_with_circle)
-        # cv2.waitKey(0)
+            # draw circle
+            src_with_circle = ellipce2circle.copy()
+            cv2.ellipse(src_with_circle, ((new_el_coord[0], new_el_coord[1]), (MA,MA), 180-angle), (0, 255, 0), 3)
+            circle = ((new_el_coord[0], new_el_coord[1]), (MA,MA), 180-angle)
+            box_circle = cv2.boxPoints(circle)
+            box_circle = np.intp(box_circle)
+            cv2.drawContours(src_with_circle, [box_circle], 0, (0,0,255), 3)
 
-        # deskewing rotated box
-        src_deskewing = ellipce2circle.copy()
+            # cv2.imshow('ellipce2circle',src_with_circle)
+            # cv2.waitKey(0)
 
-        if circle[1][0]<circle[1][1]:
-        # rotate our image by -90 degrees around the image
-            # print('w<h')
-            angle_d = circle[2]-90
-            M_desk = self.get_rot_m(src_deskewing.shape[1], src_deskewing.shape[0], MA/MA, angle_d) 
+            # deskewing rotated box
+            src_deskewing = ellipce2circle.copy()
 
+            if circle[1][0]<circle[1][1]:
+            # rotate our image by -90 degrees around the image
+                # print('w<h')
+                angle_d = circle[2]-90
+                M_desk = self.get_rot_m(src_deskewing.shape[1], src_deskewing.shape[0], MA/MA, angle_d) 
+
+            else:
+                # print('h<w')
+                angle_d = circle[2]+180
+                M_desk = self.get_rot_m(src_deskewing.shape[1], src_deskewing.shape[0], MA/MA, angle_d) 
+
+            src_deskewing = cv2.warpAffine(src_deskewing, M_desk, (src_deskewing.shape[1], src_deskewing.shape[0]), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            # cv2.imshow('src_deskewing',src_deskewing)
+            # cv2.waitKey(0)
+            # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_deskewing.png',src_deskewing)
+
+            # recalculate dots after affine transform
+
+            # recalculate center
+            vect = np.array([y_el,x_el,1])
+            T = M_el2c.dot(vect.T)
+            ellipce2circle[int(T[1]),int(T[0])] = [0,0,255]
+
+            vect_box = np.array([int(T[0]),int(T[1]), 1])
+            T_box = M_desk.dot(vect_box.T) # new center
+
+            # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_with_helplines.png', src_with_helplines)
+
+            y_1 = int(T_box[1])
+            x_1 = int(T_box[0])
+
+            
+            xy = self.masks_reading(mask_dict[1], '1')
+
+            start_end_needle_pos = self.ransac_pred(xy[0], xy[1])
+
+
+            undesk = self.recalculate_el_desk(M_el2c, M_desk, start_end_needle_pos)
+            needle_coord = self.check_needle_end(undesk, (x_1, y_1))
+            
+            # from center to end point of needle
+            
+            # cv2.imshow('src_deskewing',src_deskewing)
+            # cv2.waitKey(0)
+
+            digits_coordinates, digits_meaning, phys_quan_classnum = self.find_digits(boxes_dig)
+
+            undesk_dig = self.recalculate_el_desk(M_el2c, M_desk, digits_coordinates)
+
+            undesk_dig = np.array(undesk_dig)
+
+            dict_digits = self.digits_dictionary(digits_meaning, undesk_dig, phys_quan_classnum)
+
+            src_digits_final = src_deskewing.copy()
+            (h, w) = src_digits_final.shape[:2]
+
+            gamma_digits = self.gamma_digits(w, h, x_1, y_1, dict_digits,src_digits_final )
+
+            dict_digits_keys_arr = []
+            for i in dict_digits.keys():
+              dict_digits_keys_arr.append(i)
+
+            gamma_digits_arr = (np.array(gamma_digits).reshape(-1, 1))
+            digits_meaning_arr = (np.array(dict_digits_keys_arr).reshape(-1, 1))
+            ransac = linear_model.RANSACRegressor()
+            ransac.fit(gamma_digits_arr, digits_meaning_arr)
+            line_y_dig_ransac = ransac.predict(gamma_digits_arr)
+            d = math.sqrt( (needle_coord[1][0] - x_1 )**2 +  (needle_coord[1][1] - h )**2)
+            e = math.sqrt( (needle_coord[1][0] - x_1 )**2 +  (needle_coord[1][1] - y_1)**2)
+            f = math.sqrt( (x_1 - x_1 )**2 +  (h - y_1)**2)
+
+
+            gamma_needle = math.acos( (e**2+f**2-d**2)/(2*e*f) ) *180/math.pi-2
+            print(f"Gamma needle: {gamma_needle}")
+
+            vmin = min(line_y_dig_ransac)
+            qmin = min(gamma_digits_arr)
+            qmax = max(gamma_digits_arr)
+            vmax = max(line_y_dig_ransac)
+            measurement = vmin + ((gamma_needle-qmin)/(qmax-qmin))*(vmax-vmin)
+            src_final = src_deskewing.copy()
+
+            if phys_quan_classnum is not None:
+                print('Measurement: %s'%(str(np.round(measurement[0],5))+' '+phys_quan_classnum))
+            else:
+                print('Measurement: %s'%(str(np.round(measurement[0],5))))
+
+            cv2.putText(src_final, str(np.round(measurement[0],2))+' '+phys_quan_classnum, (20,20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
+            cv2.line(src_final, (needle_coord[0][0], needle_coord[0][1]), (x_1,y_1), (255,255,0), 1, cv2.LINE_AA)
+
+            src_final[y_1, x_1] = (0,0,255)
+            cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_final.png', src_final)
+            self.publish_image(src_final, src_final.shape[0], src_final.shape[1], self.measurement_image_pub)
         else:
-            # print('h<w')
-            angle_d = circle[2]+180
-            M_desk = self.get_rot_m(src_deskewing.shape[1], src_deskewing.shape[0], MA/MA, angle_d) 
-
-        src_deskewing = cv2.warpAffine(src_deskewing, M_desk, (src_deskewing.shape[1], src_deskewing.shape[0]), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-        # cv2.imshow('src_deskewing',src_deskewing)
-        # cv2.waitKey(0)
-        # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_deskewing.png',src_deskewing)
-
-        # recalculate dots after affine transform
-
-        # recalculate center
-        vect = np.array([y_el,x_el,1])
-        T = M_el2c.dot(vect.T)
-        ellipce2circle[int(T[1]),int(T[0])] = [0,0,255]
-
-        vect_box = np.array([int(T[0]),int(T[1]), 1])
-        T_box = M_desk.dot(vect_box.T) # new center
-
-        # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_with_helplines.png', src_with_helplines)
-
-        y_1 = int(T_box[1])
-        x_1 = int(T_box[0])
-
-        
-        xy = self.masks_reading(mask_dict[1], '1')
-
-        start_end_needle_pos = self.ransac_pred(xy[0], xy[1])
-
-
-        undesk = self.recalculate_el_desk(M_el2c, M_desk, start_end_needle_pos)
-        needle_coord = self.check_needle_end(undesk, (x_1, y_1))
-        
-        # from center to end point of needle
-        
-        # cv2.imshow('src_deskewing',src_deskewing)
-        # cv2.waitKey(0)
-
-        digits_coordinates, digits_meaning, phys_quan_classnum = self.find_digits(boxes_dig)
-
-        undesk_dig = self.recalculate_el_desk(M_el2c, M_desk, digits_coordinates)
-
-        undesk_dig = np.array(undesk_dig)
-
-        dict_digits = self.digits_dictionary(digits_meaning, undesk_dig, phys_quan_classnum)
-
-        src_digits_final = src_deskewing.copy()
-        (h, w) = src_digits_final.shape[:2]
-
-        gamma_digits = self.gamma_digits(w, h, x_1, y_1, dict_digits,src_digits_final )
-
-        dict_digits_keys_arr = []
-        for i in dict_digits.keys():
-          dict_digits_keys_arr.append(i)
-
-        gamma_digits_arr = (np.array(gamma_digits).reshape(-1, 1))
-        digits_meaning_arr = (np.array(dict_digits_keys_arr).reshape(-1, 1))
-        ransac = linear_model.RANSACRegressor()
-        ransac.fit(gamma_digits_arr, digits_meaning_arr)
-        line_y_dig_ransac = ransac.predict(gamma_digits_arr)
-        d = math.sqrt( (needle_coord[1][0] - x_1 )**2 +  (needle_coord[1][1] - h )**2)
-        e = math.sqrt( (needle_coord[1][0] - x_1 )**2 +  (needle_coord[1][1] - y_1)**2)
-        f = math.sqrt( (x_1 - x_1 )**2 +  (h - y_1)**2)
-
-
-        gamma_needle = math.acos( (e**2+f**2-d**2)/(2*e*f) ) *180/math.pi-2
-        print(f"Gamma needle: {gamma_needle}")
-
-        vmin = min(line_y_dig_ransac)
-        qmin = min(gamma_digits_arr)
-        qmax = max(gamma_digits_arr)
-        vmax = max(line_y_dig_ransac)
-        measurement = vmin + ((gamma_needle-qmin)/(qmax-qmin))*(vmax-vmin)
-        src_final = src_deskewing.copy()
-
-        if phys_quan_classnum is not None:
-            print('Measurement: %s'%(str(np.round(measurement[0],5))+' '+phys_quan_classnum))
-        else:
-            print('Measurement: %s'%(str(np.round(measurement[0],5))))
-
-        cv2.putText(src_final, str(np.round(measurement[0],2))+' '+phys_quan_classnum, (20,20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
-        cv2.line(src_final, (needle_coord[0][0], needle_coord[0][1]), (x_1,y_1), (255,255,0), 1, cv2.LINE_AA)
-
-        src_final[y_1, x_1] = (0,0,255)
-        cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_final.png', src_final)
-        self.publish_image(src_final, src_final.shape[0], src_final.shape[1], self.measurement_image_pub)
-
+            print('Needle is no t found, change position')
 
 
 
 def main():
 
-    mode = 1 # choose mode to calculate, online - 0, by service - 
+    mode = 10 # choose mode to calculate, online - 0, by service - 
 
     rospy.init_node('yolov5_ros', anonymous=True)
     yolo_dect = Yolo_Dect()
@@ -894,7 +897,7 @@ def main():
 
 
             elif yolo_dect.flag_for_cropping_ssdisplay:
-                print('calculate ssdisplay')
+
                 start_cnns = time.time()
                 yolo_dect.model_digits_ssdisplay_eval()
                 end_cnns = time.time()
@@ -902,19 +905,18 @@ def main():
                 yolo_dect.flag_for_cropping_ssdisplay = False
         
         else:
-            if det_boxs[6] == 'gauge':
-                start_cnns = time.time()
-                boxes_dig = yolo_dect.model_digits_gauge_eval()
-                masks = yolo_dect.model_seg_eval()
-                end_cnns = time.time()
-                yolo_dect.gauge_calculate(boxes_dig, masks)
-                print(f"Elapsed time to calculate meas {end_cnns-start_cnns}")
-            elif det_boxs[6] == 'counter':
-                print('counter')
-            elif det_boxs[6] == 'ssdisplay':
-                print('ssdisplay')
 
-        
+
+            # gauge
+            boxes_dig = yolo_dect.model_digits_gauge_eval()
+            masks = yolo_dect.model_seg_eval()
+            yolo_dect.gauge_calculate(boxes_dig, masks)
+
+            #counter
+            yolo_dect.model_digits_counter_eval()
+            # ss display
+            yolo_dect.model_digits_ssdisplay_eval()
+      
 
 
 
