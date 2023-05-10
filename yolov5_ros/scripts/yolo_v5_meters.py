@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys
-# sys.path.insert(0, '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/yolov5')
-# print(sys.path)
+import time
+start_load_libs = time.time()
 import cv2
-from cv2 import aruco
 import torch
 import math
-import random
-import time
 import rospy
 import numpy as np
 import ros_numpy
@@ -18,9 +14,6 @@ from yolov5_ros_msgs.msg import BoundingBox, BoundingBoxes
 from yolov5_ros_msgs.srv import counter_response_crop, counter_response_cropResponse, gauge_response_crop, gauge_response_cropResponse, ssdisplay_response_crop, ssdisplay_response_cropResponse
 import os 
 from yolov5_ros.yolov5.models.common import DetectMultiBackend
-# from yolov5_ros.yolov5.utils.torch_utils import select_device
-# from yolov5_ros.yolov5.utils.dataloaders import LoadImages
-# from yolov5_ros.yolov5.utils.general import (non_max_suppression, check_img_size)
 from pathlib import Path
 # from yolov5_ros.yolov5.utils.plots import Annotator
 from yolov5_ros.yolov5.utils.dataloaders import IMG_FORMATS, VID_FORMATS, LoadImages, LoadScreenshots, LoadStreams
@@ -32,11 +25,17 @@ from yolov5_ros.yolov5.utils.segment.general import masks2segments, process_mask
 from yolov5_ros.yolov5.utils.torch_utils import select_device, smart_inference_mode
 import platform 
 from sklearn import linear_model, datasets
+import argparse
+end_load_libs = time.time()
+print(f"Elapsed time to load libs {end_load_libs-start_load_libs}")
+
+
 class Yolo_Dect:
 
     flag_for_cropping_counter = False
     flag_for_cropping_gauge = False
     flag_for_cropping_ssdisplay = False
+    flag_for_digital_meter_reading = False
     im_rate = 0
     det_counter_id = String()
     det_gauge_id = String()
@@ -48,12 +47,12 @@ class Yolo_Dect:
     def __init__(self):
 
         self.msg_ = None
-        self.bboxes = []
+        self.bboxes = {}
 
         # load parameters
         yolov5_path = rospy.get_param('/yolov5_path', '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/yolov5')
 
-        weight_path = rospy.get_param('~weight_path', '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/weights/43.pt')
+        weight_path = rospy.get_param('~weight_path', '/home/diana/yolov5_ros_ws/src/Yolov5_ros/yolov5_ros/yolov5_ros/weights/meters_gauges_ssdisplay.pt')
         image_topic = rospy.get_param(
             '~image_topic', '/camera/image_raw')
         pub_topic = rospy.get_param('~pub_topic', '/yolov5/BoundingBoxes')
@@ -64,18 +63,20 @@ class Yolo_Dect:
         # load local repository(YoloV5:v6.0)
         start_load_model = time.time()
 
-        weights_seg = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/7_seg.pt'
+        weights_seg = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/weights/7_seg.pt'
         data = '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/data/coco128.yaml' 
         self.model_seg = DetectMultiBackend(weights_seg, device = device, dnn=False, data=data, fp16=False )
         self.model = torch.hub.load(yolov5_path, 'custom', path=weight_path, source='local', force_reload=True)
         self.model.to(device)
-        self.model_digits = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/yolov5/43.pt', source='local', force_reload=True)
-        self.model_digits.to(device)
-
+        self.model_digits_gauge = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/weights/43.pt', source='local', force_reload=True)
+        self.model_digits_gauge.to(device)
+        self.model_digits_counter = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/weights/19.pt', source='local', force_reload=True)
+        self.model_digits_counter.to(device)
+        self.model_digits_ssdisplay = torch.hub.load(yolov5_path, 'custom', '/ros_ws/ws-ros1/src/meter_detect_and_read/yolov5_ros/yolov5_ros/weights/38.pt', source='local', force_reload=True)
+        self.model_digits_ssdisplay.to(device)
         
         end_load_model = time.time()
-        print('Models are loaded')
-        print(end_load_model-start_load_model)
+        print(f"Elapsed time to load models {end_load_model-start_load_model}")
         # self.model.cpu()
 
         # which device will be used
@@ -89,7 +90,9 @@ class Yolo_Dect:
         
 
         self.model.conf = conf
-        self.model_digits.conf = conf
+        self.model_digits_gauge.conf = conf
+        self.model_digits_counter.conf = conf
+        self.model_digits_ssdisplay.conf = 0.2
         self.color_image = Image()
         self.depth_image = Image()
         self.getImageStatus = False
@@ -107,6 +110,12 @@ class Yolo_Dect:
 
         self.image_pub = rospy.Publisher(
             '/yolov5/detection_image_new',  Image, queue_size=1)
+        self.measurement_image_pub = rospy.Publisher(
+            '/yolov5/gauge_measuremet_image_new',  Image, queue_size=1)
+        self.counter_image_pub = rospy.Publisher(
+            '/yolov5/counter_measuremet_image_new',  Image, queue_size=1)
+        self.ssdisplay_image_pub = rospy.Publisher(
+            '/yolov5/ssdisplay_measuremet_image_new',  Image, queue_size=1)
 
         responce_service_counter = rospy.Service('/crop_counter', counter_response_crop, self.response_srv_counter)
         responce_service_gauge = rospy.Service('/crop_gauge', gauge_response_crop, self.response_srv_gauge)
@@ -145,34 +154,46 @@ class Yolo_Dect:
         self.color_image = ros_numpy.numpify(self.msg_)
         self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
         results = self.model(self.color_image)
-        # self.boxs = results.pandas().xyxy[0].sort_values(by='confidence').values
 
-        ############ for aruco ############
-        # boxs_ = []
-        
-        # # create ids list (aruco here)
-        # # ids = np.array([349850, 538746])
-        # # insert space for id
-        # for i, n in enumerate(boxs):
-        #     boxes_ = np.append(n, 0)
-        #     boxs_ = np.append(boxs_,boxes_)
-
-        # boxs_ = np.reshape(boxs_, (-1, 8))
-           
-        # self.dectshow(self.color_image, boxs, self.msg_.height, self.msg_.width)
-        # self.im_rate = self.msg_.header.seq
-        # end_det = time.time()
-        # print("%s - det time"%(str(end_det-start_det)))
         return results
 
     # digits in mano detection func
-    def model_digits_eval(self):
+    def model_digits_gauge_eval(self):
         self.color_image = ros_numpy.numpify(self.msg_)
         self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
-        self.cropped_msg = self.color_image[self.bboxes[1]:self.bboxes[3],self.bboxes[0]:self.bboxes[2]]
+        g_box = self.bboxes['gauge']
+        self.cropped_msg = self.color_image[g_box[1]:g_box[3],g_box[0]:g_box[2]]
         cv2.imwrite(os.path.join(self.path_, 'cropped_msg_0.jpg'), self.cropped_msg)
-        results_dig = self.model_digits(self.cropped_msg)
+        results_dig = self.model_digits_gauge(self.cropped_msg)
         boxs_dig = results_dig.pandas().xyxy[0].sort_values(by='confidence').values
+
+        return boxs_dig
+
+    # digits in counter detection func
+    def model_digits_counter_eval(self):
+        self.color_image = ros_numpy.numpify(self.msg_)
+        self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
+        c_box = self.bboxes['counter']
+        self.cropped_msg = self.color_image[c_box[1]:c_box[3],c_box[0]:c_box[2]]
+        cv2.imwrite(os.path.join(self.path_, 'cropped_msg_0.jpg'), self.cropped_msg)
+        results_dig = self.model_digits_counter(self.cropped_msg)
+        boxs_dig = results_dig.pandas().xyxy[0].sort_values(by='xmin').values
+        self.flag_for_digital_meter_reading = True
+        self.dectshow(self.cropped_msg, boxs_dig, self.cropped_msg.shape[0], self.cropped_msg.shape[1], self.counter_image_pub)
+
+        return boxs_dig
+
+    # digits in counter detection func
+    def model_digits_ssdisplay_eval(self):
+        self.color_image = ros_numpy.numpify(self.msg_)
+        self.color_image = cv2.cvtColor(self.color_image, cv2.COLOR_BGR2RGB)
+        c_box = self.bboxes['ss display']
+        self.cropped_msg = self.color_image[c_box[1]:c_box[3],c_box[0]:c_box[2]]
+        cv2.imwrite(os.path.join(self.path_, 'cropped_msg_0.jpg'), self.cropped_msg)
+        results_dig = self.model_digits_ssdisplay(self.cropped_msg)
+        boxs_dig = results_dig.pandas().xyxy[0].sort_values(by='xmin').values
+        self.flag_for_digital_meter_reading = True
+        self.dectshow(self.cropped_msg, boxs_dig, self.cropped_msg.shape[0], self.cropped_msg.shape[1], self.ssdisplay_image_pub)
 
         return boxs_dig
 
@@ -346,7 +367,7 @@ class Yolo_Dect:
             
 
 
-    def dectshow(self, org_img, boxs, height, width):
+    def dectshow(self, org_img, boxs, height, width, pub):
 
         count = 0
         for i in boxs:
@@ -371,7 +392,8 @@ class Yolo_Dect:
             
             boundingBox.id = 0
 
-            self.bboxes = [boundingBox.xmin, boundingBox.ymin, boundingBox.xmax, boundingBox.ymax, boundingBox.Class]
+            self.bboxes[boundingBox.Class] = [boundingBox.xmin, boundingBox.ymin, boundingBox.xmax, boundingBox.ymax]
+            # print(self.bboxes)
 
             if box[6] in self.classes_colors.keys():
                 color = self.classes_colors[box[6]]
@@ -389,8 +411,8 @@ class Yolo_Dect:
                 
             cv2.putText(org_img, boundingBox.Class,
                         (int(box[0]), int(text_pos_y)-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.putText(org_img, str(np.round(box[4], 2)),
-                        (int(box[0]), int(text_pos_y)+10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
+            # cv2.putText(org_img, str(np.round(box[4], 2)),
+            #             (int(box[0]), int(text_pos_y)+10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
             # cv2.putText(org_img, 'id '+str(boundingBox.id),
             #             (int(box[0]), int(text_pos_y)+20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2, cv2.LINE_AA)
             self.boundingBoxes.bounding_boxes.append(boundingBox)
@@ -398,25 +420,34 @@ class Yolo_Dect:
         for i in range(len(self.boundingBoxes.bounding_boxes)):        
             cropped_img = org_img[self.boundingBoxes.bounding_boxes[i].ymin:self.boundingBoxes.bounding_boxes[i].ymax, self.boundingBoxes.bounding_boxes[i].xmin:self.boundingBoxes.bounding_boxes[i].xmax]
             cv2.imwrite(os.path.join(self.path_, 'yolov5_ros/yolov5_ros/media/meter_cropped'+str(self.boundingBoxes.bounding_boxes[i].id)+'.jpg') ,cropped_img)
-        self.boundingBoxes = BoundingBoxes()
+        
+        display_result = []
+        display_result_string = ''
+
+        if self.flag_for_digital_meter_reading:
+
+            for i in range(len(self.boundingBoxes.bounding_boxes)):
+                display_result.append(int(self.boundingBoxes.bounding_boxes[i].Class))
+
+            display_result_string = ''.join(str(e) for e in display_result)
+
+            print('Current measurement is %s'%(display_result_string))
+
+            self.flag_for_digital_meter_reading = False
         
 
-        # print(self.flag_for_cropping_gauge)
 
+        self.boundingBoxes = BoundingBoxes()
+        
         if self.flag_for_cropping_gauge:
             if boundingBox.Class=='gauge':
                 self.det_gauge_id.data = str(boundingBox.id)
-                print('got in if')
                 cropped_img = org_img[boundingBox.ymin:boundingBox.ymax, boundingBox.xmin:boundingBox.xmax]
                 cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB ) 
                 cv2.imwrite(os.path.join(self.path_, 'yolov5_ros/yolov5_ros/media/'+str(boundingBox.Class)+'_cropped_'+str(boundingBox.id)+'.jpg'),cropped_img)
-                # cv2.imshow('Cropped gauge', cropped_img)
-                
+                # cv2.imshow('Cropped gauge', cropped_img)                
                 rospy.loginfo( '%s is cropped and saved', boundingBox.Class)
-                # cv2.waitKey(0)
-                # self.flag_for_cropping_gauge = False
-            # else:
-            #     return
+
 
         elif self.flag_for_cropping_counter:
             if boundingBox.Class=='counter':
@@ -425,10 +456,7 @@ class Yolo_Dect:
                 cropped_img = org_img[boundingBox.ymin:boundingBox.ymax, boundingBox.xmin:boundingBox.xmax]
                 cv2.imwrite(os.path.join(self.path_, 'yolov5_ros/yolov5_ros/media/'+str(boundingBox.Class)+'_cropped_'+str(boundingBox.id)+'.jpg'),cropped_img)                # cv2.imshow('Cropped counter', cropped_img)
                 rospy.loginfo( '%s is cropped and saved', boundingBox.Class)
-                # cv2.waitKey(0)
-                self.flag_for_cropping_counter = False
-            # else:
-            #     return
+
 
 
         elif self.flag_for_cropping_ssdisplay:
@@ -438,22 +466,17 @@ class Yolo_Dect:
                 cv2.imwrite(os.path.join(self.path_, 'yolov5_ros/yolov5_ros/media/'+str(boundingBox.Class)+'_cropped_'+str(boundingBox.id)+'.jpg'),cropped_img)                
                 # cv2.imshow('Cropped ssdisplay', cropped_img)
                 rospy.loginfo( '%s is cropped and saved', boundingBox.Class)
-                # cv2.waitKey(0)
-                self.flag_for_cropping_ssdisplay = False
-                
-            # else:
-            #     return
 
-        self.publish_image(org_img, height, width)
+        self.publish_image(org_img, height, width, pub)
         # self.position_pub.publish(self.boundingBoxes)
 
-    def publish_image(self, imgdata, height, width):
+    def publish_image(self, imgdata, height, width, pub):
         # image_temp = Image()
         image_temp = ros_numpy.msgify(Image, imgdata, encoding='bgr8')
         header = Header(stamp=rospy.Time.now())
         header.frame_id = 'camera_frame'
         image_temp.header = header
-        self.image_pub.publish(image_temp)
+        pub.publish(image_temp)
 
 
 
@@ -560,7 +583,7 @@ class Yolo_Dect:
         # print(d1)
         # print(d2)
 
-        if d1<d2:
+        if d1>d2:
           needle_end_x = int(needle_coord[1][0])
           needle_end_y = int(needle_coord[1][1])
           needle_start_x = int(needle_coord[0][0])
@@ -587,10 +610,6 @@ class Yolo_Dect:
             else:
                 phys_quan_classnum = i[6]
 
-        # print('digits_coordinates')
-        # print(digits_coordinates)
-        # print('digits_meaning')
-        # print(digits_meaning)
         digits_meaning = np.array(digits_meaning)
         return digits_coordinates, digits_meaning, phys_quan_classnum
 
@@ -622,7 +641,7 @@ class Yolo_Dect:
                 # расстояние между текущей цифрой и остальными, включая текущую
                 for j in range(0, len(digits_coordinates_deskewed_copy)):
                     dist.append(math.sqrt( abs((int(digits_coordinates_deskewed_copy[c][0]) - int(digits_coordinates_deskewed_copy[j][0]))^2 + (int(digits_coordinates_deskewed_copy[c][1]) - int(digits_coordinates_deskewed_copy[j][1]))^2)))
-                print(dist)
+                # print(dist)
                 nearest_digits = []
                 # проверка расстояния, если на близком расстоянии, то набор цифр - число
                 for a, b in enumerate(dist):
@@ -661,7 +680,6 @@ class Yolo_Dect:
             for i in range(len(digits_meaning_copy)):
                 dict_digits[int(digits_meaning_copy[i])]=digits_coordinates_deskewed_copy[i]
 
-        print(dict_digits) 
         return dict_digits
 
     def gamma_digits(self, w, h, x_1, y_1, dict_digits, src_digits_final):
@@ -675,7 +693,7 @@ class Yolo_Dect:
         contours_of_sector_flat = np.vstack(contours_of_sector_ndarray_tuple).squeeze()
 
         for i in dict_digits.values():
-            print(i)
+            # print(i)
             check_point_digits = cv2.pointPolygonTest(contours_of_sector_flat, (int(i[0]), int(i[1])), False)
             # print(check_point_digits)
             d = math.sqrt((int(i[0]) - x_1) ** 2 + (int(i[1]) - h) ** 2)
@@ -700,7 +718,7 @@ class Yolo_Dect:
         return gamma_digits
 
 
-    def gauge_calculate(self, boxes_dig, masks, boxes_mano):
+    def gauge_calculate(self, boxes_dig, masks):
 
         mask_dict = {}
         mask_dict[int(masks[1])] = masks[0]
@@ -762,20 +780,15 @@ class Yolo_Dect:
         # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_deskewing.png',src_deskewing)
 
         # recalculate dots after affine transform
-        # src_with_helplines = src_deskewing.copy()
-        boxes_mano_ = boxes_mano[0]
-        x_center = abs(boxes_mano_[2]-boxes_mano_[0])/2
-        y_center = abs(boxes_mano_[3]-boxes_mano_[1])/2
 
-        vect = np.array([y_center,x_center,1])
+        # recalculate center
+        vect = np.array([y_el,x_el,1])
         T = M_el2c.dot(vect.T)
         ellipce2circle[int(T[1]),int(T[0])] = [0,0,255]
 
         vect_box = np.array([int(T[0]),int(T[1]), 1])
         T_box = M_desk.dot(vect_box.T) # new center
-        # src_with_helplines[int(T_box[1]),int(T_box[0])] = [0,0,255]
-        # cv2.imshow('src_with_helplines',src_with_helplines)
-        # cv2.waitKey(0)
+
         # cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_with_helplines.png', src_with_helplines)
 
         y_1 = int(T_box[1])
@@ -823,8 +836,7 @@ class Yolo_Dect:
 
 
         gamma_needle = math.acos( (e**2+f**2-d**2)/(2*e*f) ) *180/math.pi-2
-        print(gamma_needle)
-
+        print(f"Gamma needle: {gamma_needle}")
 
         vmin = min(line_y_dig_ransac)
         qmin = min(gamma_digits_arr)
@@ -832,49 +844,84 @@ class Yolo_Dect:
         vmax = max(line_y_dig_ransac)
         measurement = vmin + ((gamma_needle-qmin)/(qmax-qmin))*(vmax-vmin)
         src_final = src_deskewing.copy()
-        print('Measurement')
-        if phys_quan_classnum is not None:
-            print(str(np.round(measurement[0],5))+' '+phys_quan_classnum)
-        else:
-            print(measurement)
 
-        cv2.putText(src_final, str(np.round(measurement[0],2))+' '+phys_quan_classnum, (w-130,20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
+        if phys_quan_classnum is not None:
+            print('Measurement: %s'%(str(np.round(measurement[0],5))+' '+phys_quan_classnum))
+        else:
+            print('Measurement: %s'%(str(np.round(measurement[0],5))))
+
+        cv2.putText(src_final, str(np.round(measurement[0],2))+' '+phys_quan_classnum, (20,20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 1, cv2.LINE_AA)
         cv2.line(src_final, (needle_coord[0][0], needle_coord[0][1]), (x_1,y_1), (255,255,0), 1, cv2.LINE_AA)
 
         src_final[y_1, x_1] = (0,0,255)
-        cv2.imshow('Result', src_final)
-        cv2.waitKey(0)
-
-
-
-        
-
-
+        cv2.imwrite('/ros_ws/ws-ros1/src/meter_detect_and_read/src_final.png', src_final)
+        self.publish_image(src_final, src_final.shape[0], src_final.shape[1], self.measurement_image_pub)
 
 
 
 
 def main():
+
+    mode = 1 # choose mode to calculate, online - 0, by service - 
+
     rospy.init_node('yolov5_ros', anonymous=True)
     yolo_dect = Yolo_Dect()
+
+    
     rate = rospy.Rate(1000)
     while not rospy.is_shutdown():
         bbox = yolo_dect.model_eval()
         det_boxs = bbox.pandas().xyxy[0].values
-        yolo_dect.dectshow(yolo_dect.color_image, det_boxs, yolo_dect.msg_.height, yolo_dect.msg_.width)
-        # yolo_dect.dect_bbox(bbox)
-        if yolo_dect.flag_for_cropping_gauge:
-            start_cnns = time.time()
-            boxes_dig = yolo_dect.model_digits_eval()
-            masks = yolo_dect.model_seg_eval()
-            end_cnns = time.time()
-            yolo_dect.gauge_calculate(boxes_dig, masks, det_boxs)
-            print('Evaluation complete')
-            print(end_cnns-start_cnns)
-            yolo_dect.flag_for_cropping_gauge = False
+        yolo_dect.dectshow(yolo_dect.color_image, det_boxs, yolo_dect.msg_.height, yolo_dect.msg_.width, yolo_dect.image_pub)
+
+        if mode == 1:
+
+            if yolo_dect.flag_for_cropping_gauge:
+                start_cnns = time.time()
+                boxes_dig = yolo_dect.model_digits_gauge_eval()
+                masks = yolo_dect.model_seg_eval()
+                end_cnns = time.time()
+                yolo_dect.gauge_calculate(boxes_dig, masks)
+                print(f"Elapsed time to calculate meas {end_cnns-start_cnns}")
+                yolo_dect.flag_for_cropping_gauge = False
+            elif yolo_dect.flag_for_cropping_counter:
+
+                start_cnns = time.time()
+                yolo_dect.model_digits_counter_eval()
+                end_cnns = time.time()
+                print(f"Elapsed time to calculate meas {end_cnns-start_cnns}")
+                yolo_dect.flag_for_cropping_counter = False
+
+
+            elif yolo_dect.flag_for_cropping_ssdisplay:
+                print('calculate ssdisplay')
+                start_cnns = time.time()
+                yolo_dect.model_digits_ssdisplay_eval()
+                end_cnns = time.time()
+                print(f"Elapsed time to calculate meas {end_cnns-start_cnns}")
+                yolo_dect.flag_for_cropping_ssdisplay = False
+        
+        else:
+            if det_boxs[6] == 'gauge':
+                start_cnns = time.time()
+                boxes_dig = yolo_dect.model_digits_gauge_eval()
+                masks = yolo_dect.model_seg_eval()
+                end_cnns = time.time()
+                yolo_dect.gauge_calculate(boxes_dig, masks)
+                print(f"Elapsed time to calculate meas {end_cnns-start_cnns}")
+            elif det_boxs[6] == 'counter':
+                print('counter')
+            elif det_boxs[6] == 'ssdisplay':
+                print('ssdisplay')
+
+        
+
+
+
         rate.sleep()
 
 
 if __name__ == "__main__":
 
     main()
+
